@@ -2,23 +2,23 @@ import os
 import logging  
 from telegram import Update  
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes  
-from groq import Groq  
+import dashscope  
 logging.basicConfig(  
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',  
     level=logging.INFO  
 )  
 logger = logging.getLogger(__name__)  
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))  
+dashscope.api_key = os.getenv("DASHSCOPE_API_KEY")  
 conversation_history = {}  
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:  
     user_id = update.effective_user.id  
     conversation_history[user_id] = []  
     await update.message.reply_text(  
-        "👋 你好！我是 AsNiuzi123_bot，由 Groq 驱动的 AI 助手。\n\n"  
+        "👋 你好！我是 AsNiuzi123_bot，由阿里云通义千问驱动。\n\n"  
         "我可以帮你：\n"  
         "💬 对话和回答问题\n"  
-        "💻 执行代码\n"  
-        "📚 提供知识和建议\n\n"  
+        "💻 提供建议\n"  
+        "📚 知识问答\n\n"  
         "直接发送消息开始聊天吧！"  
     )  
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:  
@@ -47,25 +47,35 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     try:  
         await update.message.chat.send_action("typing")  
           
-        response = client.chat.completions.create(  
-            model="llama-3.1-70b-versatile",  
-            messages=conversation_history[user_id],  
-            max_tokens=1024,  
-            temperature=0.7  
+        messages = []  
+        for msg in conversation_history[user_id]:  
+            messages.append({  
+                "role": msg["role"],  
+                "content": msg["content"]  
+            })  
+          
+        response = dashscope.Generation.call(  
+            model="qwen-turbo",  
+            messages=messages,  
+            temperature=0.7,  
+            max_tokens=1024  
         )  
           
-        assistant_message = response.choices[0].message.content  
-          
-        conversation_history[user_id].append({  
-            "role": "assistant",  
-            "content": assistant_message  
-        })  
-          
-        if len(assistant_message) > 4096:  
-            for i in range(0, len(assistant_message), 4096):  
-                await update.message.reply_text(assistant_message[i:i+4096])  
+        if response.status_code == 200:  
+            assistant_message = response.output.choices[0].message.content  
+              
+            conversation_history[user_id].append({  
+                "role": "assistant",  
+                "content": assistant_message  
+            })  
+              
+            if len(assistant_message) > 4096:  
+                for i in range(0, len(assistant_message), 4096):  
+                    await update.message.reply_text(assistant_message[i:i+4096])  
+            else:  
+                await update.message.reply_text(assistant_message)  
         else:  
-            await update.message.reply_text(assistant_message)  
+            await update.message.reply_text(f"❌ API 错误：{response.message}")  
       
     except Exception as e:  
         logger.error(f"Error: {e}")  
