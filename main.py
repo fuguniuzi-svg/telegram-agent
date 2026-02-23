@@ -2,16 +2,17 @@ import os
 import logging  
 from telegram import Update  
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes  
-import dashscope  
+from http import HTTPStatus  
+import requests  
+import json  
 logging.basicConfig(  
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',  
     level=logging.INFO  
 )  
 logger = logging.getLogger(__name__)  
-api_key = os.getenv("DASHSCOPE_API_KEY")  
-if not api_key:  
+DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY")  
+if not DASHSCOPE_API_KEY:  
     raise ValueError("DASHSCOPE_API_KEY 环境变量未设置")  
-dashscope.api_key = api_key  
 conversation_history = {}  
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:  
     user_id = update.effective_user.id  
@@ -50,28 +51,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     try:  
         await update.message.chat.send_action("typing")  
           
-        messages = []  
-        for msg in conversation_history[user_id]:  
-            messages.append({  
-                "role": msg["role"],  
-                "content": msg["content"]  
-            })  
+        url = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"  
           
-        response = dashscope.Generation.call(  
-            model="qwen-turbo",  
-            messages=messages,  
-            temperature=0.7,  
-            max_tokens=1024  
-        )  
+        headers = {  
+            "Authorization": f"Bearer {DASHSCOPE_API_KEY}",  
+            "Content-Type": "application/json"  
+        }  
           
-        logger.info(f"Response: {response}")  
-        logger.info(f"Response type: {type(response)}")  
+        payload = {  
+            "model": "qwen-turbo",  
+            "messages": conversation_history[user_id],  
+            "parameters": {  
+                "temperature": 0.7,  
+                "max_tokens": 1024  
+            }  
+        }  
           
-        if response is not None and hasattr(response, 'status_code') and response.status_code == 200:  
-            logger.info(f"Output: {response.output}")  
-            if hasattr(response, 'output') and response.output and hasattr(response.output, 'choices') and response.output.choices:  
-                logger.info(f"Choices: {response.output.choices}")  
-                assistant_message = response.output.choices[0].message.content  
+        response = requests.post(url, json=payload, headers=headers, timeout=30)  
+        logger.info(f"Status Code: {response.status_code}")  
+        logger.info(f"Response: {response.text}")  
+          
+        if response.status_code == 200:  
+            result = response.json()  
+            if result.get("output") and result["output"].get("choices"):  
+                assistant_message = result["output"]["choices"][0]["message"]["content"]  
                   
                 conversation_history[user_id].append({  
                     "role": "assistant",  
@@ -84,10 +87,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 else:  
                     await update.message.reply_text(assistant_message)  
             else:  
-                await update.message.reply_text("❌ API 返回格式错误")  
+                await update.message.reply_text(f"❌ API 返回格式错误: {result}")  
         else:  
-            error_msg = response.message if response else "未知错误"  
-            await update.message.reply_text(f"❌ API 错误：{error_msg}")  
+            await update.message.reply_text(f"❌ API 错误 ({response.status_code}): {response.text}")  
       
     except Exception as e:  
         logger.error(f"Error: {e}")  
