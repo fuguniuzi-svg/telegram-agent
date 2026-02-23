@@ -65,16 +65,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )  
           
         logger.info(f"Response: {response}")  
+        logger.info(f"Response type: {type(response)}")  
           
-        logger.info(f"Response: {response}")  
-logger.info(f"Response type: {type(response)}")  
-logger.info(f"Response dir: {dir(response)}")  
-if response is not None and response.status_code == 200:  
-    logger.info(f"Output: {response.output}")  
-    logger.info(f"Output type: {type(response.output)}")  
-    if hasattr(response.output, 'choices') and response.output.choices:  
-        logger.info(f"Choices: {response.output.choices}")  
-        assistant_message = response.output.choices[0].message.content 
+        if response is not None and hasattr(response, 'status_code') and response.status_code == 200:  
+            logger.info(f"Output: {response.output}")  
+            if hasattr(response, 'output') and response.output and hasattr(response.output, 'choices') and response.output.choices:  
+                logger.info(f"Choices: {response.output.choices}")  
+                assistant_message = response.output.choices[0].message.content  
                   
                 conversation_history[user_id].append({  
                     "role": "assistant",  
