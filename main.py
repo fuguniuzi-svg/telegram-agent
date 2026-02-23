@@ -2,9 +2,7 @@ import os
 import logging  
 from telegram import Update  
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes  
-from http import HTTPStatus  
-import requests  
-import json  
+import dashscope  
 logging.basicConfig(  
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',  
     level=logging.INFO  
@@ -12,7 +10,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)  
 DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY")  
 if not DASHSCOPE_API_KEY:  
-    raise ValueError("DASHSCOPE_API_KEY 环境变量未设置")  
+    raise ValueError("DASHSCOPE_API_KEY not set")  
 conversation_history = {}  
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:  
     user_id = update.effective_user.id  
@@ -51,53 +49,36 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     try:  
         await update.message.chat.send_action("typing")  
           
-        url = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"  
+        response = dashscope.Generation.call(  
+            api_key=DASHSCOPE_API_KEY,  
+            model="qwen-turbo",  
+            messages=conversation_history[user_id]  
+        )  
           
-        headers = {  
-            "Authorization": f"Bearer {DASHSCOPE_API_KEY}",  
-            "Content-Type": "application/json"  
-        }  
-          
-        payload = {  
-            "model": "qwen-turbo",  
-            "messages": conversation_history[user_id],  
-            "parameters": {  
-                "temperature": 0.7,  
-                "max_tokens": 1024  
-            }  
-        }  
-          
-        response = requests.post(url, json=payload, headers=headers, timeout=30)  
-        logger.info(f"Status Code: {response.status_code}")  
-        logger.info(f"Response: {response.text}")  
+        logger.info(f"Response: {response}")  
           
         if response.status_code == 200:  
-            result = response.json()  
-            if result.get("output") and result["output"].get("choices"):  
-                assistant_message = result["output"]["choices"][0]["message"]["content"]  
-                  
-                conversation_history[user_id].append({  
-                    "role": "assistant",  
-                    "content": assistant_message  
-                })  
-                  
-                if len(assistant_message) > 4096:  
-                    for i in range(0, len(assistant_message), 4096):  
-                        await update.message.reply_text(assistant_message[i:i+4096])  
-                else:  
-                    await update.message.reply_text(assistant_message)  
+            assistant_message = response.output.text  
+            conversation_history[user_id].append({  
+                "role": "assistant",  
+                "content": assistant_message  
+            })  
+              
+            if len(assistant_message) > 4096:  
+                for i in range(0, len(assistant_message), 4096):  
+                    await update.message.reply_text(assistant_message[i:i+4096])  
             else:  
-                await update.message.reply_text(f"❌ API 返回格式错误: {result}")  
+                await update.message.reply_text(assistant_message)  
         else:  
-            await update.message.reply_text(f"❌ API 错误 ({response.status_code}): {response.text}")  
+            await update.message.reply_text(f"❌ 错误: {response.message}")  
       
     except Exception as e:  
         logger.error(f"Error: {e}")  
-        await update.message.reply_text(f"❌ 出错了：{str(e)}")  
+        await update.message.reply_text(f"❌ 出错: {str(e)}")  
 def main():  
     token = os.getenv("TELEGRAM_BOT_TOKEN")  
     if not token:  
-        raise ValueError("TELEGRAM_BOT_TOKEN 环境变量未设置")  
+        raise ValueError("TELEGRAM_BOT_TOKEN not set")  
       
     application = Application.builder().token(token).build()  
       
