@@ -64,21 +64,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             max_tokens=1024  
         )  
           
-        if response.status_code == 200:  
-            assistant_message = response.output.choices[0].message.content  
-              
-            conversation_history[user_id].append({  
-                "role": "assistant",  
-                "content": assistant_message  
-            })  
-              
-            if len(assistant_message) > 4096:  
-                for i in range(0, len(assistant_message), 4096):  
-                    await update.message.reply_text(assistant_message[i:i+4096])  
+        logger.info(f"Response: {response}")  
+          
+        if response is not None and response.status_code == 200:  
+            if response.output and response.output.choices:  
+                assistant_message = response.output.choices[0]['message']['content']  
+                  
+                conversation_history[user_id].append({  
+                    "role": "assistant",  
+                    "content": assistant_message  
+                })  
+                  
+                if len(assistant_message) > 4096:  
+                    for i in range(0, len(assistant_message), 4096):  
+                        await update.message.reply_text(assistant_message[i:i+4096])  
+                else:  
+                    await update.message.reply_text(assistant_message)  
             else:  
-                await update.message.reply_text(assistant_message)  
+                await update.message.reply_text("❌ API 返回格式错误")  
         else:  
-            await update.message.reply_text(f"❌ API 错误：{response.message}")  
+            error_msg = response.message if response else "未知错误"  
+            await update.message.reply_text(f"❌ API 错误：{error_msg}")  
       
     except Exception as e:  
         logger.error(f"Error: {e}")  
