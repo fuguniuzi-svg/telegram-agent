@@ -8,7 +8,10 @@ logging.basicConfig(
     level=logging.INFO  
 )  
 logger = logging.getLogger(__name__)  
-dashscope.api_key = os.getenv("DASHSCOPE_API_KEY")  
+api_key = os.getenv("DASHSCOPE_API_KEY")  
+if not api_key:  
+    raise ValueError("DASHSCOPE_API_KEY 环境变量未设置")  
+dashscope.api_key = api_key  
 conversation_history = {}  
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:  
     user_id = update.effective_user.id  
